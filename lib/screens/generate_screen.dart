@@ -1,7 +1,10 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../ui/theme.dart';
 import '../services/replicate_service.dart';
+import '../services/lyrics_service.dart';
+import '../services/history_service.dart';
 
 class GenerateScreen extends StatefulWidget {
   const GenerateScreen({super.key});
@@ -14,13 +17,21 @@ class _GenerateScreenState extends State<GenerateScreen> {
   final _prompt = TextEditingController(
     text: "dark underground bulgarian trap, heavy bass, 140 bpm, aggressive",
   );
+  final _lyrics = TextEditingController();
   final _player = AudioPlayer();
+  final _history = HistoryService();
   String? _audioUrl;
   bool _loading = false;
   String? _error;
 
-  // TODO: Move to flutter_secure_storage
   static const _apiKey = "ТУК_ТВОЯТ_REPLICATE_KEY";
+
+  void _genLyrics() {
+    final topic = _prompt.text.split(',').first.trim();
+    setState(() {
+      _lyrics.text = LyricsService.generate(topic: topic);
+    });
+  }
 
   Future<void> _generate() async {
     if (_apiKey.startsWith("ТУК_")) {
@@ -30,12 +41,20 @@ class _GenerateScreenState extends State<GenerateScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _audioUrl = null;
     });
     try {
       final url = await ReplicateService(_apiKey).generate(_prompt.text.trim());
       setState(() => _audioUrl = url);
       await _player.setUrl(url);
+
+      final item = SongItem(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        prompt: _prompt.text.trim(),
+        lyrics: _lyrics.text,
+        audioUrl: url,
+        created: DateTime.now(),
+      );
+      await _history.save(item);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -47,6 +66,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
   void dispose() {
     _player.dispose();
     _prompt.dispose();
+    _lyrics.dispose();
     super.dispose();
   }
 
@@ -55,7 +75,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
     return IronBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Padding(
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,14 +99,51 @@ class _GenerateScreenState extends State<GenerateScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               TextField(
                 controller: _prompt,
                 style: const TextStyle(color: Colors.white, height: 1.4),
-                maxLines: 4,
+                maxLines: 3,
                 decoration: InputDecoration(
-                  hintText: "Опиши стила...",
+                  labelText: "Стил / промпт",
+                  labelStyle: const TextStyle(color: ironGreen),
+                  hintText: "underground trap, dark, 140 bpm...",
                   hintStyle: const TextStyle(color: Colors.white30),
+                  filled: true,
+                  fillColor: ironPanel.withOpacity(0.9),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide(color: ironGreen.withOpacity(0.4)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: ironGreen, width: 1.8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _genLyrics,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: ironGreen,
+                        side: BorderSide(color: ironGreen.withOpacity(0.5)),
+                      ),
+                      child: const Text("ГЕНЕРИРАЙ ЛИРИКИ"),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _lyrics,
+                style: const TextStyle(color: Colors.white, height: 1.35, fontSize: 13),
+                maxLines: 10,
+                decoration: InputDecoration(
+                  labelText: "Лирики",
+                  labelStyle: const TextStyle(color: ironGreen),
                   filled: true,
                   fillColor: ironPanel.withOpacity(0.9),
                   border: OutlineInputBorder(
@@ -121,7 +178,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
                           ),
                         )
                       : const Text(
-                          "ГЕНЕРИРАЙ",
+                          "ГЕНЕРИРАЙ БИЙТ",
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 16,
@@ -138,7 +195,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
                 ),
               ],
               if (_audioUrl != null) ...[
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
